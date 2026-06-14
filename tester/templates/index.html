@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WIFY MQTT Tester</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --txt:#e6e8ec; --mut:#8b93a1;
+          --rx:#4ea1ff; --tx:#ffb454; --sys:#7a818c; --acc:#3ddc97; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 ui-monospace,Consolas,monospace; background:var(--bg); color:var(--txt); }
+  header { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0; }
+  .dot { width:10px; height:10px; border-radius:50%; background:#555; display:inline-block; }
+  .dot.on { background:var(--acc); box-shadow:0 0 8px var(--acc); }
+  .mut { color:var(--mut); }
+  main { display:grid; grid-template-columns:360px 1fr; gap:0; height:calc(100vh - 50px); }
+  .side { border-right:1px solid var(--line); padding:14px; overflow:auto; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:14px; }
+  .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:var(--mut); margin:0 0 10px; }
+  label { display:block; font-size:12px; color:var(--mut); margin:6px 0 2px; }
+  input, select { width:100%; padding:7px 8px; background:#0f1218; border:1px solid var(--line);
+                  border-radius:6px; color:var(--txt); font:inherit; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; }
+  button { cursor:pointer; padding:7px 10px; background:#222733; color:var(--txt);
+           border:1px solid var(--line); border-radius:6px; font:inherit; }
+  button:hover { border-color:var(--acc); }
+  button.cmd { background:#1c2a25; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  #log { padding:0; overflow:auto; }
+  table { width:100%; border-collapse:collapse; }
+  td { padding:4px 10px; border-bottom:1px solid #1d2129; vertical-align:top; white-space:nowrap; }
+  td.pl { white-space:pre-wrap; word-break:break-all; color:var(--txt); }
+  .tag { font-weight:700; }
+  .RX { color:var(--rx); } .TX { color:var(--tx); } .SYS { color:var(--sys); }
+  .topbar { display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-bottom:1px solid var(--line); }
+</style>
+</head>
+<body>
+<header>
+  <h1>WIFY MQTT Tester</h1>
+  <span class="mut">broker</span> <b>{{ broker }}</b>
+  <span class="dot" id="conn"></span><span class="mut" id="connTxt">connecting…</span>
+</header>
+
+<main>
+  <!-- 좌측: 컨트롤 -->
+  <div class="side">
+    <div class="card">
+      <h2>Device</h2>
+      <label>device id</label>
+      <input id="dev" value="device01" />
+      <p class="mut" style="margin:8px 0 0">토픽 prefix: <b>{{ prefix }}</b></p>
+    </div>
+
+    <div class="card">
+      <h2>Server → ESP (명령 발행)</h2>
+      <div class="row">
+        <button class="cmd" onclick="pub(sfx('baseline'),'BASELINE')">baseline · BASELINE</button>
+      </div>
+      <label>새 네트워크</label>
+      <div class="grid2">
+        <input id="ssid" placeholder="ssid" />
+        <input id="pw" placeholder="passwd" />
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="cmd" onclick="pub(sfx('edit/nownetwork'),'id:'+v('ssid')+'/passwd:'+v('pw'))">edit/nownetwork</button>
+        <button class="cmd" onclick="pub(sfx('edit/editnetwork'),'NEWNETWORKEDIT')">edit/editnetwork · APPLY</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>ESP → Server (보드 시뮬레이션)</h2>
+      <div class="row">
+        <button onclick="pub(sfx('status'),'online')">status online</button>
+        <button onclick="pub(sfx('status'),'offline')">status offline</button>
+        <button onclick="pub(sfx('heartbeat'),'beat')">heartbeat</button>
+      </div>
+      <label>restroom (PIR)</label>
+      <div class="row">
+        <button onclick="pub(sfx('restroom'),'ACT')">ACT</button>
+        <button onclick="pub(sfx('restroom'),'DEACT')">DEACT</button>
+        <button onclick="pub(sfx('restroom'),'LOAD')">LOAD</button>
+      </div>
+      <label>AI 판단</label>
+      <div class="row">
+        <button onclick="pub(sfx('AI'),'DAN')">DAN</button>
+        <button onclick="pub(sfx('AI'),'NOR')">NOR</button>
+        <button onclick="pub(sfx('AI'),'WARN')">WARN</button>
+      </div>
+      <label>network status</label>
+      <div class="row">
+        <button onclick="pub(sfx('nownetwork/status'),'connect')">connect</button>
+        <button onclick="pub(sfx('nownetwork/status'),'disconnect')">disconnect</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Custom Publish</h2>
+      <label>topic</label>
+      <input id="ctopic" placeholder="wify/device01/..." />
+      <label>payload</label>
+      <input id="cpayload" placeholder="payload" />
+      <div class="row" style="margin-top:8px">
+        <button onclick="pub(v('ctopic'), v('cpayload'))">publish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 우측: 로그 -->
+  <div style="display:flex; flex-direction:column; overflow:hidden">
+    <div class="topbar">
+      <span class="mut">live log &nbsp;<span class="RX">■ RX</span> <span class="TX">■ TX</span> <span class="SYS">■ SYS</span></span>
+      <button onclick="clearLog()">clear</button>
+    </div>
+    <div id="log"><table id="logTable"></table></div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const v = id => $(id).value.trim();
+const sfx = s => `{{ prefix }}/${v('dev')}/${s}`;
+
+async function pub(topic, payload) {
+  if (!topic) return;
+  await fetch('/api/publish', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({topic, payload})
+  });
+}
+
+let since = 0;
+function clearLog(){ $('logTable').innerHTML=''; }
+
+function addRow(m){
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td class="mut">${m.ts}</td>`
+    + `<td class="tag ${m.dir}">${m.dir}</td>`
+    + `<td>${m.topic}</td>`
+    + `<td class="pl">${escapeHtml(m.payload)}</td>`;
+  const t = $('logTable');
+  t.insertBefore(tr, t.firstChild); // 최신이 위로
+}
+function escapeHtml(s){ return String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+async function poll(){
+  try {
+    const r = await fetch('/api/messages?since='+since);
+    const d = await r.json();
+    $('conn').className = 'dot' + (d.connected ? ' on':'');
+    $('connTxt').textContent = d.connected ? 'connected' : 'disconnected';
+    for (const m of d.messages){ since = m.id; addRow(m); }
+  } catch(e){ $('connTxt').textContent = 'server unreachable'; }
+}
+setInterval(poll, 1000);
+poll();
+</script>
+</body>
+</html>
