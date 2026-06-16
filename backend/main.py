@@ -12,10 +12,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.devices import router as devices_router
-from app.bridge import bridge
-from app.config import settings
-from app.ws import broadcaster
+from backend.api.devices import router as devices_router
+from backend.bridge import bridge
+from backend.config import settings
+from backend.ws import broadcaster
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "app.main:app",
+        "backend.main:app",
         host=settings.http_host,
         port=settings.http_port,
         reload=True,

@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>WIFY MQTT Tester</title>
+<title>WIFY MQTT 관제 / Tester</title>
 <style>
   :root { --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --txt:#e6e8ec; --mut:#8b93a1;
-          --rx:#4ea1ff; --tx:#ffb454; --sys:#7a818c; --acc:#3ddc97; }
+          --rx:#4ea1ff; --tx:#ffb454; --sys:#7a818c; --acc:#3ddc97;
+          --dan:#ff5c6c; --warn:#ffce54; --nor:#3ddc97; --off:#5a616e; }
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.5 ui-monospace,Consolas,monospace; background:var(--bg); color:var(--txt); }
   header { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--line); }
@@ -34,13 +35,24 @@
   .tag { font-weight:700; }
   .RX { color:var(--rx); } .TX { color:var(--tx); } .SYS { color:var(--sys); }
   .topbar { display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-bottom:1px solid var(--line); }
+
+  /* 관제 대시보드 */
+  .dash { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; padding:14px; border-bottom:1px solid var(--line); }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .tile .k { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--mut); }
+  .tile .val { font-size:18px; font-weight:700; margin-top:4px; }
+  .tile .sub { font-size:11px; color:var(--mut); margin-top:2px; }
+  .b-dan  { color:var(--dan); }  .b-warn { color:var(--warn); } .b-nor { color:var(--nor); }
+  .b-off  { color:var(--off); }  .b-on   { color:var(--acc); }
+  .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; border:1px solid var(--line); }
 </style>
 </head>
 <body>
 <header>
-  <h1>WIFY MQTT Tester</h1>
+  <h1>WIFY MQTT 관제 / Tester</h1>
   <span class="mut">broker</span> <b>{{ broker }}</b>
   <span class="dot" id="conn"></span><span class="mut" id="connTxt">connecting…</span>
+  <span class="mut" style="margin-left:auto">관제 대상</span> <b id="watchDev">device01</b>
 </header>
 
 <main>
@@ -49,16 +61,16 @@
     <div class="card">
       <h2>Device</h2>
       <label>device id</label>
-      <input id="dev" value="device01" />
+      <input id="dev" value="device01" oninput="onDevChange()" />
       <p class="mut" style="margin:8px 0 0">토픽 prefix: <b>{{ prefix }}</b></p>
     </div>
 
     <div class="card">
-      <h2>Server → ESP (명령 발행)</h2>
+      <h2>Server → ESP (명령 / 제어)</h2>
       <div class="row">
-        <button class="cmd" onclick="pub(sfx('baseline'),'BASELINE')">baseline · BASELINE</button>
+        <button class="cmd" onclick="pub(sfx('baseline/cmd'), JSON.stringify({cmd:'BASELINE_REBUILD'}))">baseline/cmd · REBUILD</button>
       </div>
-      <label>새 네트워크</label>
+      <label>새 네트워크 (Server → ESP)</label>
       <div class="grid2">
         <input id="ssid" placeholder="ssid" />
         <input id="pw" placeholder="passwd" />
@@ -71,9 +83,10 @@
 
     <div class="card">
       <h2>ESP → Server (보드 시뮬레이션)</h2>
+      <label>status / heartbeat</label>
       <div class="row">
-        <button onclick="pub(sfx('status'),'online')">status online</button>
-        <button onclick="pub(sfx('status'),'offline')">status offline</button>
+        <button onclick="pub(sfx('status'),'online')">online</button>
+        <button onclick="pub(sfx('status'),'offline')">offline</button>
         <button onclick="pub(sfx('heartbeat'),'beat')">heartbeat</button>
       </div>
       <label>restroom (PIR)</label>
@@ -85,13 +98,22 @@
       <label>AI 판단</label>
       <div class="row">
         <button onclick="pub(sfx('AI'),'DAN')">DAN</button>
-        <button onclick="pub(sfx('AI'),'NOR')">NOR</button>
         <button onclick="pub(sfx('AI'),'WARN')">WARN</button>
+        <button onclick="pub(sfx('AI'),'NOR')">NOR</button>
       </div>
-      <label>network status</label>
+      <label>network 상태</label>
       <div class="row">
+        <button onclick="pub(sfx('nownetwork'),'id:'+v('ssid')+'/passwd:'+v('pw'))">nownetwork (현재 id/pw)</button>
+      </div>
+      <div class="row" style="margin-top:6px">
         <button onclick="pub(sfx('nownetwork/status'),'connect')">connect</button>
         <button onclick="pub(sfx('nownetwork/status'),'disconnect')">disconnect</button>
+        <button onclick="pub(sfx('nownetwork/again'),'AGAIN')">again · AGAIN</button>
+      </div>
+      <label>baseline 진행 상태</label>
+      <div class="row">
+        <button onclick="pub(sfx('baseline/status'),'MEASURING')">MEASURING</button>
+        <button onclick="pub(sfx('baseline/status'),'DONE')">DONE</button>
       </div>
     </div>
 
@@ -107,8 +129,17 @@
     </div>
   </div>
 
-  <!-- 우측: 로그 -->
+  <!-- 우측: 관제 대시보드 + 로그 -->
   <div style="display:flex; flex-direction:column; overflow:hidden">
+    <div class="dash" id="dash">
+      <div class="tile"><div class="k">status</div><div class="val" id="t-status">—</div><div class="sub" id="t-status-sub"></div></div>
+      <div class="tile"><div class="k">heartbeat</div><div class="val" id="t-hb">—</div><div class="sub" id="t-hb-sub">수신 없음</div></div>
+      <div class="tile"><div class="k">restroom (PIR)</div><div class="val" id="t-restroom">—</div></div>
+      <div class="tile"><div class="k">AI 판단</div><div class="val" id="t-ai">—</div></div>
+      <div class="tile"><div class="k">network</div><div class="val" id="t-netstat">—</div><div class="sub" id="t-net">—</div></div>
+      <div class="tile"><div class="k">baseline</div><div class="val" id="t-baseline">—</div></div>
+    </div>
+
     <div class="topbar">
       <span class="mut">live log &nbsp;<span class="RX">■ RX</span> <span class="TX">■ TX</span> <span class="SYS">■ SYS</span></span>
       <button onclick="clearLog()">clear</button>
@@ -118,9 +149,10 @@
 </main>
 
 <script>
+const PREFIX = "{{ prefix }}";
 const $ = id => document.getElementById(id);
 const v = id => $(id).value.trim();
-const sfx = s => `{{ prefix }}/${v('dev')}/${s}`;
+const sfx = s => `${PREFIX}/${v('dev')}/${s}`;
 
 async function pub(topic, payload) {
   if (!topic) return;
@@ -144,16 +176,78 @@ function addRow(m){
 }
 function escapeHtml(s){ return String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
+/* ---- 관제 대시보드 상태 ---- */
+let lastHeartbeat = null; // ms epoch
+
+function watchDev(){ return v('dev'); }
+function onDevChange(){
+  $('watchDev').textContent = watchDev() || '—';
+  resetDash();
+}
+function resetDash(){
+  lastHeartbeat = null;
+  ['t-status','t-restroom','t-ai','t-netstat','t-baseline','t-hb'].forEach(id=>{ $(id).textContent='—'; $(id).className='val'; });
+  $('t-net').textContent='—'; $('t-status-sub').textContent=''; $('t-hb-sub').textContent='수신 없음';
+}
+
+function applyState(topic, payload){
+  // 관제 대상 device 의 인바운드(ESP→Server) 토픽만 반영
+  const parts = topic.split('/');            // wify / deviceXX / suffix...
+  if (parts.length < 3 || parts[0] !== PREFIX) return;
+  if (parts[1] !== watchDev()) return;
+  const suffix = parts.slice(2).join('/');
+
+  if (suffix === 'status'){
+    const on = payload === 'online';
+    setTile('t-status', payload, on ? 'b-on':'b-off');
+  } else if (suffix === 'heartbeat'){
+    lastHeartbeat = Date.now();
+    setTile('t-hb', 'alive', 'b-on');
+  } else if (suffix === 'restroom'){
+    const cls = payload==='ACT' ? 'b-warn' : payload==='DEACT' ? 'b-off' : '';
+    setTile('t-restroom', payload, cls);
+  } else if (suffix === 'AI'){
+    const cls = payload==='DAN' ? 'b-dan' : payload==='WARN' ? 'b-warn' : payload==='NOR' ? 'b-nor' : '';
+    setTile('t-ai', payload, cls);
+  } else if (suffix === 'nownetwork'){
+    $('t-net').textContent = payload;
+  } else if (suffix === 'nownetwork/status'){
+    const on = payload === 'connect';
+    setTile('t-netstat', payload, on ? 'b-on':'b-off');
+  } else if (suffix === 'nownetwork/again'){
+    setTile('t-netstat', 'AGAIN', 'b-warn');
+    $('t-net').textContent = '재입력 필요';
+  } else if (suffix === 'baseline/status'){
+    const cls = payload==='MEASURING' ? 'b-warn' : payload==='DONE' ? 'b-nor' : '';
+    setTile('t-baseline', payload, cls);
+  }
+}
+function setTile(id, text, cls){ const el=$(id); el.textContent=text; el.className='val '+(cls||''); }
+
+function tickHeartbeat(){
+  if (lastHeartbeat == null){ return; }
+  const sec = Math.floor((Date.now()-lastHeartbeat)/1000);
+  $('t-hb-sub').textContent = sec+'s 전';
+  // 30초 넘게 heartbeat 없으면 stale 표시
+  if (sec > 30){ setTile('t-hb','stale','b-off'); }
+}
+
 async function poll(){
   try {
     const r = await fetch('/api/messages?since='+since);
     const d = await r.json();
     $('conn').className = 'dot' + (d.connected ? ' on':'');
     $('connTxt').textContent = d.connected ? 'connected' : 'disconnected';
-    for (const m of d.messages){ since = m.id; addRow(m); }
+    for (const m of d.messages){
+      since = m.id;
+      addRow(m);
+      if (m.dir === 'RX') applyState(m.topic, m.payload);
+    }
   } catch(e){ $('connTxt').textContent = 'server unreachable'; }
 }
+$('watchDev').textContent = watchDev();
 setInterval(poll, 1000);
+setInterval(tickHeartbeat, 1000);
 poll();
 </script>
 </body>

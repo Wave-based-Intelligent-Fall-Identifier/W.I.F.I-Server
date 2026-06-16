@@ -3,8 +3,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.bridge import bridge
-from app.store import DeviceState, Event, store
+from backend.bridge import bridge
+from backend.store import DeviceState, Event, store
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 

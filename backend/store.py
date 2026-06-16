@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
-from app.config import settings
+from backend.config import settings
 
 
 def _now() -> datetime:

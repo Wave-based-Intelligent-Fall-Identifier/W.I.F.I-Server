@@ -11,10 +11,10 @@ import logging
 
 import aiomqtt
 
-from app import topics
-from app.config import settings
-from app.store import Event, _now, store
-from app.ws import broadcaster
+from backend import topics
+from backend.config import settings
+from backend.store import Event, _now, store
+from backend.ws import broadcaster
 
 log = logging.getLogger("wify.bridge")
 

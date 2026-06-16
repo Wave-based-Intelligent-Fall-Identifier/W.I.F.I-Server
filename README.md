@@ -36,7 +36,7 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env   # 브로커 주소 등 설정
-python -m app.main
+python -m backend.main
 ```
 - API 문서: http://localhost:8000/docs
 - 헬스체크: http://localhost:8000/health
@@ -85,7 +85,7 @@ python -m app.main
 
 ## 디렉터리 구조
 ```
-app/
+backend/         # FastAPI 서버 (python -m backend.main)
   main.py        # FastAPI 진입점, lifespan, WebSocket
   config.py      # 환경설정(.env)
   topics.py      # 토픽 정의/파싱
@@ -93,6 +93,7 @@ app/
   store.py       # 인메모리 상태/이벤트 저장소
   ws.py          # WebSocket 브로드캐스터
   api/devices.py # 디바이스 REST 라우터
+tester/          # MQTT 관제/테스터 (Flask, python tester/app.py)
 mosquitto/       # 브로커 설정
 docker-compose.yml
 ```

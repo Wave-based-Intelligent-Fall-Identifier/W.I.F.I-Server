@@ -4,7 +4,7 @@
 suffix 는 여러 단계일 수 있음 (예: nownetwork/status, edit/nownetwork).
 """
 
-from app.config import settings
+from backend.config import settings
 
 PREFIX = settings.topic_prefix
 
